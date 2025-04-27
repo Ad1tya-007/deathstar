@@ -57,7 +57,6 @@ const gameState = {
   isGameOver: false,
   score: 0,
   objective: 'Reach the Death Star trench',
-  killCount: 0,
 };
 
 // Input state
@@ -648,7 +647,7 @@ function fireLaser() {
   }
 }
 
-// Update the updateLasers function to be more precise with distance calculation and no physics
+// Update the updateLasers function to increment score when targets are destroyed
 function updateLasers(deltaTime) {
   // Update each laser
   for (let i = lasers.length - 1; i >= 0; i--) {
@@ -700,7 +699,9 @@ function updateLasers(deltaTime) {
 
           // Increase score
           gameState.score += 100;
-          gameState.killCount++;
+
+          // Update the UI score display
+          updateScoreDisplay();
 
           // Play explosion sound
           if (explosionSound) {
@@ -747,6 +748,10 @@ function updateLasers(deltaTime) {
 
           // Remove from asteroids array
           asteroids.splice(j, 1);
+
+          // Add points for destroying asteroid
+          gameState.score += 25;
+          updateScoreDisplay();
         }
 
         break;
@@ -995,10 +1000,10 @@ function updateShipPhysics(deltaTime) {
   // Apply rotation based on keys (if not barrel rolling)
   if (!shipState.barrelRoll.active) {
     if (keys.a || keys.ArrowLeft) {
-      shipState.rotation.y += 0.05;
+      shipState.rotation.y += 0.02;
     }
     if (keys.d || keys.ArrowRight) {
-      shipState.rotation.y -= 0.05;
+      shipState.rotation.y -= 0.02;
     }
   }
 
@@ -1110,11 +1115,6 @@ function gameOver(message) {
   // Mark game as over
   gameState.isGameOver = true;
 
-  // Log to console for debugging
-  console.log('Game Over: ' + message);
-  console.log(`Final Score: ${gameState.score}`);
-  console.log(`Enemy fighters destroyed: ${gameState.killCount}`);
-
   // Update the game over screen with message and stats
   if (uiElements.gameOverScreen) {
     // Update message
@@ -1125,10 +1125,6 @@ function gameOver(message) {
     // Update stats
     if (uiElements.scoreValue) {
       uiElements.scoreValue.textContent = gameState.score;
-    }
-
-    if (uiElements.enemiesValue) {
-      uiElements.enemiesValue.textContent = gameState.killCount;
     }
 
     // Show game over screen with fade-in effect
@@ -1405,7 +1401,7 @@ function updateSpeedDisplay() {
     speedPercent >= 0 ? '#00ff00' : '#ff3300';
 }
 
-// Add a new function to initialize the UI elements
+// Enhance initUI function to add a score display at the top left
 function initUI() {
   // Create a controls panel container
   const controlsPanel = document.createElement('div');
@@ -1501,6 +1497,52 @@ function initUI() {
 
   // Store reference to control panel
   uiElements.controlsPanel = controlsPanel;
+
+  // Create score panel at top left
+  const scorePanel = document.createElement('div');
+  scorePanel.style.position = 'fixed';
+  scorePanel.style.top = '20px';
+  scorePanel.style.left = '20px';
+  scorePanel.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+  scorePanel.style.color = 'white';
+  scorePanel.style.padding = '15px';
+  scorePanel.style.borderRadius = '10px';
+  scorePanel.style.fontFamily = 'Arial, sans-serif';
+  scorePanel.style.fontSize = '16px';
+  scorePanel.style.zIndex = '1000';
+  scorePanel.style.userSelect = 'none';
+  scorePanel.style.boxShadow = '0 0 10px rgba(0, 255, 255, 0.5)';
+  scorePanel.style.border = '1px solid rgba(0, 255, 255, 0.3)';
+  scorePanel.style.minWidth = '180px';
+
+  // Create score display
+  const scoreContainer = document.createElement('div');
+  scoreContainer.style.display = 'flex';
+  scoreContainer.style.justifyContent = 'space-between';
+  scoreContainer.style.alignItems = 'center';
+  scoreContainer.style.marginBottom = '10px';
+
+  const scoreLabel = document.createElement('div');
+  scoreLabel.textContent = 'SCORE:';
+  scoreLabel.style.fontWeight = 'bold';
+  scoreLabel.style.color = '#00ffff';
+
+  const liveScoreValue = document.createElement('div');
+  liveScoreValue.textContent = '0';
+  liveScoreValue.style.fontWeight = 'bold';
+  liveScoreValue.style.fontSize = '22px';
+  liveScoreValue.style.color = '#ffffff';
+
+  scoreContainer.appendChild(scoreLabel);
+  scoreContainer.appendChild(liveScoreValue);
+  scorePanel.appendChild(scoreContainer);
+
+  // Add to document
+  document.body.appendChild(scorePanel);
+
+  // Store references
+  uiElements.scorePanel = scorePanel;
+  uiElements.liveScoreValue = liveScoreValue;
 
   // Create speed indicator panel
   const speedPanel = document.createElement('div');
@@ -1635,12 +1677,12 @@ function initUI() {
 
   // Add score stat
   const scoreRow = document.createElement('tr');
-  const scoreLabel = document.createElement('td');
-  scoreLabel.textContent = 'SCORE:';
-  scoreLabel.style.padding = '8px';
-  scoreLabel.style.color = '#00ffff';
-  scoreLabel.style.fontWeight = 'bold';
-  scoreLabel.style.textAlign = 'right';
+  const scoreStatLabel = document.createElement('td');
+  scoreStatLabel.textContent = 'SCORE:';
+  scoreStatLabel.style.padding = '8px';
+  scoreStatLabel.style.color = '#00ffff';
+  scoreStatLabel.style.fontWeight = 'bold';
+  scoreStatLabel.style.textAlign = 'right';
 
   const scoreValue = document.createElement('td');
   scoreValue.textContent = '0';
@@ -1648,28 +1690,9 @@ function initUI() {
   scoreValue.style.textAlign = 'left';
   scoreValue.style.fontWeight = 'bold';
 
-  scoreRow.appendChild(scoreLabel);
+  scoreRow.appendChild(scoreStatLabel);
   scoreRow.appendChild(scoreValue);
   statsTable.appendChild(scoreRow);
-
-  // Add enemies destroyed stat
-  const enemiesRow = document.createElement('tr');
-  const enemiesLabel = document.createElement('td');
-  enemiesLabel.textContent = 'FIGHTERS DESTROYED:';
-  enemiesLabel.style.padding = '8px';
-  enemiesLabel.style.color = '#00ffff';
-  enemiesLabel.style.fontWeight = 'bold';
-  enemiesLabel.style.textAlign = 'right';
-
-  const enemiesValue = document.createElement('td');
-  enemiesValue.textContent = '0';
-  enemiesValue.style.padding = '8px';
-  enemiesValue.style.textAlign = 'left';
-  enemiesValue.style.fontWeight = 'bold';
-
-  enemiesRow.appendChild(enemiesLabel);
-  enemiesRow.appendChild(enemiesValue);
-  statsTable.appendChild(enemiesRow);
 
   statsContainer.appendChild(statsTable);
   gameOverScreen.appendChild(statsContainer);
@@ -1713,7 +1736,14 @@ function initUI() {
   uiElements.gameOverScreen = gameOverScreen;
   uiElements.gameOverMessage = gameOverMessage;
   uiElements.scoreValue = scoreValue;
-  uiElements.enemiesValue = enemiesValue;
+}
+
+// Add a function to update the score display
+function updateScoreDisplay() {
+  // Update the score display in top left
+  if (uiElements.liveScoreValue) {
+    uiElements.liveScoreValue.textContent = gameState.score;
+  }
 }
 
 // Initialize and start animation
