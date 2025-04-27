@@ -15,6 +15,7 @@ let lasers = []; // Array to hold laser projectiles
 let explosions = []; // Array to hold explosion effects
 let targets = []; // Targets that can be shot (TIE fighters, etc.)
 let uiElements = {}; // Store UI elements
+let isMobile = false; // Flag to track if we're on mobile
 
 // Game settings
 const gameSettings = {
@@ -166,8 +167,21 @@ const mouse = {
   isDown: false,
 };
 
+// Check if device is mobile
+function checkIfMobile() {
+  return (
+    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+      navigator.userAgent
+    ) || window.innerWidth < 800
+  );
+}
+
 // Initialize the scene
 function init() {
+  // Check if running on mobile
+  isMobile = checkIfMobile();
+  console.log('Is mobile device:', isMobile);
+
   // Create scene
   scene = new THREE.Scene();
   scene.fog = new THREE.FogExp2(0x000000, 0.0008); // Add fog for better depth effect
@@ -1413,6 +1427,38 @@ function onWindowResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+
+  // Check if device type changed (e.g., when rotating a tablet)
+  const wasMobile = isMobile;
+  isMobile = checkIfMobile();
+
+  // If device type changed, recreate UI
+  if (wasMobile !== isMobile) {
+    // Remove existing UI elements
+    if (uiElements.controlsPanel) {
+      document.body.removeChild(uiElements.controlsPanel);
+      uiElements.controlsPanel = null;
+    }
+
+    if (uiElements.mobileControls) {
+      if (uiElements.mobileControls.dpadContainer) {
+        document.body.removeChild(uiElements.mobileControls.dpadContainer);
+      }
+      if (uiElements.mobileControls.actionButtonContainer) {
+        document.body.removeChild(
+          uiElements.mobileControls.actionButtonContainer
+        );
+      }
+      uiElements.mobileControls = null;
+    }
+
+    // Recreate appropriate controls
+    if (isMobile) {
+      createMobileControls();
+    } else {
+      createKeyboardControlsPanel();
+    }
+  }
 }
 
 // Add a function to update speed display
@@ -1461,100 +1507,13 @@ function updateSpeedDisplay() {
 
 // Enhance initUI function to add a score display at the top left
 function initUI() {
-  // Create a controls panel container
-  const controlsPanel = document.createElement('div');
-  controlsPanel.style.position = 'fixed';
-  controlsPanel.style.bottom = '20px';
-  controlsPanel.style.left = '20px';
-  controlsPanel.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-  controlsPanel.style.color = 'white';
-  controlsPanel.style.padding = '15px';
-  controlsPanel.style.borderRadius = '10px';
-  controlsPanel.style.fontFamily = 'Arial, sans-serif';
-  controlsPanel.style.fontSize = '14px';
-  controlsPanel.style.zIndex = '1000';
-  controlsPanel.style.userSelect = 'none';
-  controlsPanel.style.boxShadow = '0 0 10px rgba(0, 255, 255, 0.5)';
-  controlsPanel.style.border = '1px solid rgba(0, 255, 255, 0.3)';
-
-  // Add heading
-  const heading = document.createElement('div');
-  heading.textContent = 'CONTROLS';
-  heading.style.fontWeight = 'bold';
-  heading.style.marginBottom = '10px';
-  heading.style.borderBottom = '1px solid rgba(0, 255, 255, 0.5)';
-  heading.style.paddingBottom = '5px';
-  heading.style.color = '#00ffff';
-  controlsPanel.appendChild(heading);
-
-  // Add control instructions
-  const controls = [
-    { key: 'W / ↑', action: 'Increase speed' },
-    { key: 'S / ↓', action: 'Decrease speed' },
-    { key: 'A / ←', action: 'Turn left' },
-    { key: 'D / →', action: 'Turn right' },
-    { key: 'Q', action: 'Barrel roll left' },
-    { key: 'E', action: 'Barrel roll right' },
-    { key: 'F', action: 'Fire lasers' },
-    { key: 'SPACE', action: 'Move upward' },
-  ];
-
-  // Create a table for better alignment
-  const table = document.createElement('table');
-  table.style.borderCollapse = 'collapse';
-  table.style.width = '100%';
-
-  controls.forEach((control) => {
-    const row = document.createElement('tr');
-
-    const keyCell = document.createElement('td');
-    keyCell.textContent = control.key;
-    keyCell.style.padding = '4px 8px 4px 0';
-    keyCell.style.fontWeight = 'bold';
-    keyCell.style.color = '#ffcc00';
-    keyCell.style.whiteSpace = 'nowrap';
-
-    const actionCell = document.createElement('td');
-    actionCell.textContent = control.action;
-    actionCell.style.padding = '4px 0';
-
-    row.appendChild(keyCell);
-    row.appendChild(actionCell);
-    table.appendChild(row);
-  });
-
-  controlsPanel.appendChild(table);
-
-  // Add minimize/expand button
-  const toggleButton = document.createElement('div');
-  toggleButton.textContent = '[-]';
-  toggleButton.style.position = 'absolute';
-  toggleButton.style.top = '10px';
-  toggleButton.style.right = '10px';
-  toggleButton.style.cursor = 'pointer';
-  toggleButton.style.color = '#00ffff';
-
-  let isExpanded = true;
-  const tableContainer = table.parentNode;
-
-  toggleButton.addEventListener('click', () => {
-    if (isExpanded) {
-      table.style.display = 'none';
-      toggleButton.textContent = '[+]';
-    } else {
-      table.style.display = 'table';
-      toggleButton.textContent = '[-]';
-    }
-    isExpanded = !isExpanded;
-  });
-
-  controlsPanel.appendChild(toggleButton);
-
-  // Add to document
-  document.body.appendChild(controlsPanel);
-
-  // Store reference to control panel
-  uiElements.controlsPanel = controlsPanel;
+  // Create mobile controls if on mobile device
+  if (isMobile) {
+    createMobileControls();
+  } else {
+    // Create the keyboard controls panel for desktop
+    createKeyboardControlsPanel();
+  }
 
   // Create score panel at top left
   const scorePanel = document.createElement('div');
@@ -2060,6 +2019,333 @@ function updateColorSelectionUI() {
       button.style.border = '3px solid transparent';
     }
   });
+}
+
+// Create keyboard controls panel for desktop
+function createKeyboardControlsPanel() {
+  // Create a controls panel container
+  const controlsPanel = document.createElement('div');
+  controlsPanel.style.position = 'fixed';
+  controlsPanel.style.bottom = '20px';
+  controlsPanel.style.left = '20px';
+  controlsPanel.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+  controlsPanel.style.color = 'white';
+  controlsPanel.style.padding = '15px';
+  controlsPanel.style.borderRadius = '10px';
+  controlsPanel.style.fontFamily = 'Arial, sans-serif';
+  controlsPanel.style.fontSize = '14px';
+  controlsPanel.style.zIndex = '1000';
+  controlsPanel.style.userSelect = 'none';
+  controlsPanel.style.boxShadow = '0 0 10px rgba(0, 255, 255, 0.5)';
+  controlsPanel.style.border = '1px solid rgba(0, 255, 255, 0.3)';
+
+  // Add heading
+  const heading = document.createElement('div');
+  heading.textContent = 'CONTROLS';
+  heading.style.fontWeight = 'bold';
+  heading.style.marginBottom = '10px';
+  heading.style.borderBottom = '1px solid rgba(0, 255, 255, 0.5)';
+  heading.style.paddingBottom = '5px';
+  heading.style.color = '#00ffff';
+  controlsPanel.appendChild(heading);
+
+  // Add control instructions
+  const controls = [
+    { key: 'W / ↑', action: 'Increase speed' },
+    { key: 'S / ↓', action: 'Decrease speed' },
+    { key: 'A / ←', action: 'Turn left' },
+    { key: 'D / →', action: 'Turn right' },
+    { key: 'Q', action: 'Barrel roll left' },
+    { key: 'E', action: 'Barrel roll right' },
+    { key: 'F', action: 'Fire lasers' },
+    { key: 'SPACE', action: 'Move upward' },
+  ];
+
+  // Create a table for better alignment
+  const table = document.createElement('table');
+  table.style.borderCollapse = 'collapse';
+  table.style.width = '100%';
+
+  controls.forEach((control) => {
+    const row = document.createElement('tr');
+
+    const keyCell = document.createElement('td');
+    keyCell.textContent = control.key;
+    keyCell.style.padding = '4px 8px 4px 0';
+    keyCell.style.fontWeight = 'bold';
+    keyCell.style.color = '#ffcc00';
+    keyCell.style.whiteSpace = 'nowrap';
+
+    const actionCell = document.createElement('td');
+    actionCell.textContent = control.action;
+    actionCell.style.padding = '4px 0';
+
+    row.appendChild(keyCell);
+    row.appendChild(actionCell);
+    table.appendChild(row);
+  });
+
+  controlsPanel.appendChild(table);
+
+  // Add minimize/expand button
+  const toggleButton = document.createElement('div');
+  toggleButton.textContent = '[-]';
+  toggleButton.style.position = 'absolute';
+  toggleButton.style.top = '10px';
+  toggleButton.style.right = '10px';
+  toggleButton.style.cursor = 'pointer';
+  toggleButton.style.color = '#00ffff';
+
+  let isExpanded = true;
+  const tableContainer = table.parentNode;
+
+  toggleButton.addEventListener('click', () => {
+    if (isExpanded) {
+      table.style.display = 'none';
+      toggleButton.textContent = '[+]';
+    } else {
+      table.style.display = 'table';
+      toggleButton.textContent = '[-]';
+    }
+    isExpanded = !isExpanded;
+  });
+
+  controlsPanel.appendChild(toggleButton);
+
+  // Add to document
+  document.body.appendChild(controlsPanel);
+
+  // Store reference to control panel
+  uiElements.controlsPanel = controlsPanel;
+}
+
+// Create mobile controls
+function createMobileControls() {
+  // Create container for directional buttons (bottom left)
+  const dpadContainer = document.createElement('div');
+  dpadContainer.style.position = 'fixed';
+  dpadContainer.style.bottom = '20px';
+  dpadContainer.style.left = '20px';
+  dpadContainer.style.width = '150px';
+  dpadContainer.style.height = '150px';
+  dpadContainer.style.zIndex = '1000';
+
+  // Create D-pad layout
+  const buttonSize = '50px';
+  const buttonStyle = {
+    width: buttonSize,
+    height: buttonSize,
+    borderRadius: '50%',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    border: '2px solid rgba(0, 255, 255, 0.7)',
+    color: '#00ffff',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    fontSize: '24px',
+    position: 'absolute',
+    cursor: 'pointer',
+    userSelect: 'none',
+    boxShadow: '0 0 10px rgba(0, 255, 255, 0.3)',
+  };
+
+  // Create up button
+  const upButton = document.createElement('div');
+  Object.assign(upButton.style, buttonStyle);
+  upButton.style.top = '0';
+  upButton.style.left = '50px';
+  upButton.innerHTML = '&uarr;'; // Up arrow
+  dpadContainer.appendChild(upButton);
+
+  // Create down button
+  const downButton = document.createElement('div');
+  Object.assign(downButton.style, buttonStyle);
+  downButton.style.bottom = '0';
+  downButton.style.left = '50px';
+  downButton.innerHTML = '&darr;'; // Down arrow
+  dpadContainer.appendChild(downButton);
+
+  // Create left button
+  const leftButton = document.createElement('div');
+  Object.assign(leftButton.style, buttonStyle);
+  leftButton.style.left = '0';
+  leftButton.style.top = '50px';
+  leftButton.innerHTML = '&larr;'; // Left arrow
+  dpadContainer.appendChild(leftButton);
+
+  // Create right button
+  const rightButton = document.createElement('div');
+  Object.assign(rightButton.style, buttonStyle);
+  rightButton.style.right = '0';
+  rightButton.style.top = '50px';
+  rightButton.innerHTML = '&rarr;'; // Right arrow
+  dpadContainer.appendChild(rightButton);
+
+  // Add to document
+  document.body.appendChild(dpadContainer);
+
+  // Create action buttons (middle right)
+  // Create action button container
+  const actionButtonContainer = document.createElement('div');
+  actionButtonContainer.style.position = 'fixed';
+  actionButtonContainer.style.right = '20px';
+  actionButtonContainer.style.top = '50%';
+  actionButtonContainer.style.transform = 'translateY(-50%)';
+  actionButtonContainer.style.display = 'flex';
+  actionButtonContainer.style.flexDirection = 'column';
+  actionButtonContainer.style.gap = '20px';
+  actionButtonContainer.style.zIndex = '1000';
+
+  // Fire button
+  const fireButton = document.createElement('div');
+  fireButton.style.width = '70px';
+  fireButton.style.height = '70px';
+  fireButton.style.borderRadius = '50%';
+  fireButton.style.backgroundColor = 'rgba(255, 0, 0, 0.4)';
+  fireButton.style.border = '2px solid rgba(255, 0, 0, 0.7)';
+  fireButton.style.color = '#ff0000';
+  fireButton.style.display = 'flex';
+  fireButton.style.justifyContent = 'center';
+  fireButton.style.alignItems = 'center';
+  fireButton.style.fontSize = '18px';
+  fireButton.style.fontWeight = 'bold';
+  fireButton.style.cursor = 'pointer';
+  fireButton.style.userSelect = 'none';
+  fireButton.style.boxShadow = '0 0 15px rgba(255, 0, 0, 0.3)';
+  fireButton.innerHTML = 'FIRE';
+  actionButtonContainer.appendChild(fireButton);
+
+  // Thrust up button
+  const thrustButton = document.createElement('div');
+  thrustButton.style.width = '70px';
+  thrustButton.style.height = '70px';
+  thrustButton.style.borderRadius = '50%';
+  thrustButton.style.backgroundColor = 'rgba(0, 255, 0, 0.4)';
+  thrustButton.style.border = '2px solid rgba(0, 255, 0, 0.7)';
+  thrustButton.style.color = '#00ff00';
+  thrustButton.style.display = 'flex';
+  thrustButton.style.justifyContent = 'center';
+  thrustButton.style.alignItems = 'center';
+  thrustButton.style.fontSize = '18px';
+  thrustButton.style.fontWeight = 'bold';
+  thrustButton.style.cursor = 'pointer';
+  thrustButton.style.userSelect = 'none';
+  thrustButton.style.boxShadow = '0 0 15px rgba(0, 255, 0, 0.3)';
+  thrustButton.textContent = 'UP';
+  actionButtonContainer.appendChild(thrustButton);
+
+  // Add to document
+  document.body.appendChild(actionButtonContainer);
+
+  // Store references
+  uiElements.mobileControls = {
+    dpadContainer,
+    actionButtonContainer,
+    upButton,
+    downButton,
+    leftButton,
+    rightButton,
+    fireButton,
+    thrustButton,
+  };
+
+  // Setup event listeners for mobile buttons
+  setupMobileControlListeners();
+}
+
+// Setup event listeners for mobile control buttons
+function setupMobileControlListeners() {
+  const controls = uiElements.mobileControls;
+
+  // Helper function to handle touch events
+  function setupTouchHandlers(
+    element,
+    keyToSimulate,
+    activeColor,
+    defaultColor
+  ) {
+    // Touch start - press key
+    element.addEventListener('touchstart', (e) => {
+      e.preventDefault(); // Prevent scrolling
+      keys[keyToSimulate] = true;
+      element.style.backgroundColor = activeColor;
+    });
+
+    // Touch end - release key
+    element.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      keys[keyToSimulate] = false;
+      element.style.backgroundColor = defaultColor;
+    });
+
+    // Touch cancel - release key
+    element.addEventListener('touchcancel', (e) => {
+      e.preventDefault();
+      keys[keyToSimulate] = false;
+      element.style.backgroundColor = defaultColor;
+    });
+
+    // If touch moves out of button, release key
+    element.addEventListener('touchmove', (e) => {
+      const touch = e.touches[0];
+      const rect = element.getBoundingClientRect();
+      if (
+        touch.clientX < rect.left ||
+        touch.clientX > rect.right ||
+        touch.clientY < rect.top ||
+        touch.clientY > rect.bottom
+      ) {
+        keys[keyToSimulate] = false;
+        element.style.backgroundColor = defaultColor;
+      }
+    });
+  }
+
+  // Direction buttons
+  setupTouchHandlers(
+    controls.upButton,
+    'w',
+    'rgba(0, 255, 255, 0.7)',
+    'rgba(0, 0, 0, 0.5)'
+  );
+  setupTouchHandlers(
+    controls.downButton,
+    's',
+    'rgba(0, 255, 255, 0.7)',
+    'rgba(0, 0, 0, 0.5)'
+  );
+  setupTouchHandlers(
+    controls.leftButton,
+    'a',
+    'rgba(0, 255, 255, 0.7)',
+    'rgba(0, 0, 0, 0.5)'
+  );
+  setupTouchHandlers(
+    controls.rightButton,
+    'd',
+    'rgba(0, 255, 255, 0.7)',
+    'rgba(0, 0, 0, 0.5)'
+  );
+
+  // Fire button
+  controls.fireButton.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    fireLaser();
+    controls.fireButton.style.backgroundColor = 'rgba(255, 0, 0, 0.7)';
+  });
+
+  controls.fireButton.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    controls.fireButton.style.backgroundColor = 'rgba(255, 0, 0, 0.4)';
+  });
+
+  // Up thrust button (space)
+  setupTouchHandlers(
+    controls.thrustButton,
+    ' ',
+    'rgba(0, 255, 0, 0.7)',
+    'rgba(0, 255, 0, 0.4)'
+  );
 }
 
 // Initialize and start animation
