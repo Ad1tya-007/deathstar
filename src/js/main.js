@@ -16,9 +16,80 @@ let explosions = []; // Array to hold explosion effects
 let targets = []; // Targets that can be shot (TIE fighters, etc.)
 let uiElements = {}; // Store UI elements
 
-// Add sound effects for lasers and explosions
-let audioListener;
-let laserSound, explosionSound;
+// Create a dedicated AudioManager class
+class AudioManager {
+  constructor(listener) {
+    this.listener = listener;
+    this.loader = new THREE.AudioLoader();
+    this.music = null;
+    this.isMusicMuted = false;
+    console.log('AudioManager initialized - music only');
+  }
+
+  // Load only background music
+  loadSounds() {
+    console.log('Loading only background music');
+    this.loadMusic();
+  }
+
+  // Load background music
+  loadMusic() {
+    console.log('Loading background music');
+    this.loader.load(
+      'https://cdn.jsdelivr.net/gh/mrdoob/three.js@master/examples/sounds/358232_j_s_song.mp3',
+      (buffer) => {
+        this.music = new THREE.Audio(this.listener);
+        this.music.setBuffer(buffer);
+        this.music.setVolume(0.3);
+        this.music.setLoop(true);
+
+        // Auto-play music if not muted
+        if (!this.isMusicMuted) {
+          this.playMusic();
+        }
+        console.log('Background music loaded');
+      },
+      // Progress callback
+      (xhr) => {
+        console.log(`Music ${(xhr.loaded / xhr.total) * 100}% loaded`);
+      },
+      // Error callback
+      (err) => {
+        console.error('Error loading background music:', err);
+      }
+    );
+  }
+
+  // Play music if not already playing
+  playMusic() {
+    if (this.music && !this.music.isPlaying) {
+      this.music.play();
+      console.log('Music started playing');
+    }
+  }
+
+  // Toggle music on/off
+  toggleMusic() {
+    if (this.music) {
+      if (this.isMusicMuted) {
+        this.music.play();
+        this.isMusicMuted = false;
+        console.log('Music unmuted');
+      } else {
+        this.music.pause();
+        this.isMusicMuted = true;
+        console.log('Music muted');
+      }
+      return this.isMusicMuted;
+    } else {
+      console.warn('Music not loaded yet');
+      return this.isMusicMuted;
+    }
+  }
+}
+
+// Create a singleton instance
+let audioManager = null;
 
 // Physics variables
 const shipState = {
@@ -102,11 +173,12 @@ function init() {
   camera.position.y = 0;
 
   // Add audio listener to camera
-  audioListener = new THREE.AudioListener();
+  const audioListener = new THREE.AudioListener();
   camera.add(audioListener);
 
-  // Load sound effects
-  loadSoundEffects();
+  // Initialize audio manager
+  audioManager = new AudioManager(audioListener);
+  audioManager.loadSounds();
 
   // Create renderer
   renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -444,29 +516,6 @@ function createSimpleXWing() {
   xwing.position.copy(shipState.position);
 }
 
-// Load sound effects
-function loadSoundEffects() {
-  // Laser sound
-  const laserBuffer = new THREE.AudioLoader().load(
-    'https://cdn.jsdelivr.net/gh/mrdoob/three.js@master/examples/sounds/ping.mp3',
-    function (buffer) {
-      laserSound = new THREE.Audio(audioListener);
-      laserSound.setBuffer(buffer);
-      laserSound.setVolume(0.5);
-    }
-  );
-
-  // Explosion sound
-  const explosionBuffer = new THREE.AudioLoader().load(
-    'https://cdn.jsdelivr.net/gh/mrdoob/three.js@master/examples/sounds/376737_Skullbeatz___Bad_Cat_Maste.mp3',
-    function (buffer) {
-      explosionSound = new THREE.Audio(audioListener);
-      explosionSound.setBuffer(buffer);
-      explosionSound.setVolume(0.5);
-    }
-  );
-}
-
 // Create enemy TIE fighters
 function createEnemyFighters() {
   // Create 10 TIE fighters
@@ -586,7 +635,7 @@ function setupEventListeners() {
   });
 }
 
-// Update the fireLaser function to create longer and thicker lasers
+// Update the fireLaser function to remove sound playback
 function fireLaser() {
   // Check if we can shoot
   const currentTime = clock.getElapsedTime();
@@ -638,16 +687,10 @@ function fireLaser() {
     damage: shipState.laserDamage,
   });
 
-  // Play laser sound
-  if (laserSound && laserSound.isPlaying) {
-    laserSound.stop();
-  }
-  if (laserSound) {
-    laserSound.play();
-  }
+  // No sound for lasers
 }
 
-// Update the updateLasers function to increment score when targets are destroyed
+// Update the updateLasers function to remove explosion sound
 function updateLasers(deltaTime) {
   // Update each laser
   for (let i = lasers.length - 1; i >= 0; i--) {
@@ -703,10 +746,7 @@ function updateLasers(deltaTime) {
           // Update the UI score display
           updateScoreDisplay();
 
-          // Play explosion sound
-          if (explosionSound) {
-            explosionSound.play();
-          }
+          // No explosion sound
         }
 
         break; // Laser can only hit one target
@@ -1544,6 +1584,91 @@ function initUI() {
   uiElements.scorePanel = scorePanel;
   uiElements.liveScoreValue = liveScoreValue;
 
+  // Create DeathStar title at top middle
+  const deathStarTitle = document.createElement('div');
+  deathStarTitle.textContent = 'DEATHSTAR';
+  deathStarTitle.style.position = 'fixed';
+  deathStarTitle.style.top = '20px';
+  deathStarTitle.style.left = '50%';
+  deathStarTitle.style.transform = 'translateX(-50%)';
+  deathStarTitle.style.color = '#ffffff';
+  deathStarTitle.style.fontFamily = 'Arial, sans-serif';
+  deathStarTitle.style.fontSize = '32px';
+  deathStarTitle.style.fontWeight = 'bold';
+  deathStarTitle.style.letterSpacing = '3px';
+  deathStarTitle.style.textShadow = '0 0 10px rgba(255, 255, 255, 0.5)';
+  deathStarTitle.style.zIndex = '1000';
+  deathStarTitle.style.userSelect = 'none';
+
+  // Add to document
+  document.body.appendChild(deathStarTitle);
+
+  // Store reference
+  uiElements.deathStarTitle = deathStarTitle;
+
+  // Create icons container for top right
+  const iconsContainer = document.createElement('div');
+  iconsContainer.style.position = 'fixed';
+  iconsContainer.style.top = '20px';
+  iconsContainer.style.right = '20px';
+  iconsContainer.style.display = 'flex';
+  iconsContainer.style.gap = '15px';
+  iconsContainer.style.zIndex = '1000';
+
+  // Create music toggle icon
+  const musicIcon = document.createElement('div');
+  musicIcon.innerHTML = '🔊'; // Default: unmuted
+  musicIcon.style.fontSize = '24px';
+  musicIcon.style.color = '#ffffff';
+  musicIcon.style.cursor = 'pointer';
+  musicIcon.style.textShadow = '0 0 5px rgba(255, 255, 255, 0.5)';
+  musicIcon.style.width = '30px';
+  musicIcon.style.height = '30px';
+  musicIcon.style.display = 'flex';
+  musicIcon.style.justifyContent = 'center';
+  musicIcon.style.alignItems = 'center';
+  musicIcon.style.borderRadius = '50%';
+  musicIcon.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+  musicIcon.style.padding = '5px';
+  musicIcon.title = 'Toggle Music';
+
+  // Add click event for music toggle
+  musicIcon.addEventListener('click', toggleMusic);
+
+  // Create settings icon
+  const settingsIcon = document.createElement('div');
+  settingsIcon.innerHTML = '⚙️'; // Gear icon
+  settingsIcon.style.fontSize = '24px';
+  settingsIcon.style.color = '#ffffff';
+  settingsIcon.style.cursor = 'pointer';
+  settingsIcon.style.textShadow = '0 0 5px rgba(255, 255, 255, 0.5)';
+  settingsIcon.style.width = '30px';
+  settingsIcon.style.height = '30px';
+  settingsIcon.style.display = 'flex';
+  settingsIcon.style.justifyContent = 'center';
+  settingsIcon.style.alignItems = 'center';
+  settingsIcon.style.borderRadius = '50%';
+  settingsIcon.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+  settingsIcon.style.padding = '5px';
+  settingsIcon.title = 'Settings';
+
+  // Add click event listener for settings (no functionality yet)
+  settingsIcon.addEventListener('click', () => {
+    console.log('Settings clicked');
+  });
+
+  // Add icons to container
+  iconsContainer.appendChild(musicIcon);
+  iconsContainer.appendChild(settingsIcon);
+
+  // Add container to document
+  document.body.appendChild(iconsContainer);
+
+  // Store references
+  uiElements.iconsContainer = iconsContainer;
+  uiElements.musicIcon = musicIcon;
+  uiElements.settingsIcon = settingsIcon;
+
   // Create speed indicator panel
   const speedPanel = document.createElement('div');
   speedPanel.style.position = 'fixed';
@@ -1743,6 +1868,14 @@ function updateScoreDisplay() {
   // Update the score display in top left
   if (uiElements.liveScoreValue) {
     uiElements.liveScoreValue.textContent = gameState.score;
+  }
+}
+
+// Toggle music function
+function toggleMusic() {
+  const isMuted = audioManager.toggleMusic();
+  if (uiElements.musicIcon) {
+    uiElements.musicIcon.innerHTML = isMuted ? '🔇' : '🔊';
   }
 }
 
