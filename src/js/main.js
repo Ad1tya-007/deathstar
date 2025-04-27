@@ -16,6 +16,19 @@ let explosions = []; // Array to hold explosion effects
 let targets = []; // Targets that can be shot (TIE fighters, etc.)
 let uiElements = {}; // Store UI elements
 
+// Game settings
+const gameSettings = {
+  xwingColor: 'red', // Default color: red, can be 'red', 'blue', 'green', 'yellow'
+
+  // Color options with their hex values
+  colors: {
+    red: { wing: 0xcc0000, laser: 0xff0000 },
+    blue: { wing: 0x0066cc, laser: 0x0099ff },
+    green: { wing: 0x00cc44, laser: 0x00ff66 },
+    yellow: { wing: 0xccaa00, laser: 0xffcc00 },
+  },
+};
+
 // Create a dedicated AudioManager class
 class AudioManager {
   constructor(listener) {
@@ -451,7 +464,9 @@ function createSimpleXWing() {
 
   // Wings
   const wingGeometry = new THREE.BoxGeometry(8, 0.2, 3);
-  const wingMaterial = new THREE.MeshPhongMaterial({ color: 0xcc0000 });
+  // Use the color from settings
+  const wingColor = gameSettings.colors[gameSettings.xwingColor].wing;
+  const wingMaterial = new THREE.MeshPhongMaterial({ color: wingColor });
 
   const wingTop1 = new THREE.Mesh(wingGeometry, wingMaterial);
   wingTop1.position.set(4, 0.6, 0);
@@ -648,11 +663,14 @@ function fireLaser() {
 
   // Create laser geometry - longer and thicker for better visibility
   const laserGeometry = new THREE.CylinderGeometry(0.5, 0.5, 5, 8); // 5x thicker and 5x longer
+
+  // Use the laser color from settings
+  const laserColor = gameSettings.colors[gameSettings.xwingColor].laser;
   const laserMaterial = new THREE.MeshBasicMaterial({
-    color: 0xff0000,
+    color: laserColor,
     transparent: true,
     opacity: 0.8,
-    emissive: 0xff0000,
+    emissive: laserColor,
     emissiveIntensity: 1.0,
   });
 
@@ -1652,9 +1670,18 @@ function initUI() {
   settingsIcon.style.padding = '5px';
   settingsIcon.title = 'Settings';
 
-  // Add click event listener for settings (no functionality yet)
+  // Add click event listener for settings
   settingsIcon.addEventListener('click', () => {
-    console.log('Settings clicked');
+    if (!uiElements.settingsPanel) {
+      createSettingsPanel();
+    }
+
+    // Toggle display
+    uiElements.settingsPanel.style.display =
+      uiElements.settingsPanel.style.display === 'none' ? 'block' : 'none';
+
+    // Update UI to show current selection
+    updateColorSelectionUI();
   });
 
   // Add icons to container
@@ -1877,6 +1904,162 @@ function toggleMusic() {
   if (uiElements.musicIcon) {
     uiElements.musicIcon.innerHTML = isMuted ? '🔇' : '🔊';
   }
+}
+
+// Add a function to change the X-Wing color
+function changeXWingColor(color) {
+  if (!gameSettings.colors[color]) {
+    console.error(`Invalid color: ${color}`);
+    return;
+  }
+
+  // Update the settings
+  gameSettings.xwingColor = color;
+
+  // Update the X-Wing material
+  if (xwing) {
+    // Find all wing meshes (they are at indices 1-4)
+    const wingColor = gameSettings.colors[color].wing;
+    for (let i = 1; i <= 4; i++) {
+      const wing = xwing.children[i];
+      if (wing && wing.material) {
+        wing.material.color.setHex(wingColor);
+      }
+    }
+  }
+
+  // Update UI if needed
+  updateColorSelectionUI();
+}
+
+// Create the settings panel
+function createSettingsPanel() {
+  // Create settings panel container
+  const settingsPanel = document.createElement('div');
+  settingsPanel.style.position = 'fixed';
+  settingsPanel.style.top = '50%';
+  settingsPanel.style.left = '50%';
+  settingsPanel.style.transform = 'translate(-50%, -50%)';
+  settingsPanel.style.width = '300px';
+  settingsPanel.style.backgroundColor = 'rgba(0, 0, 0, 0.9)';
+  settingsPanel.style.borderRadius = '10px';
+  settingsPanel.style.padding = '20px';
+  settingsPanel.style.boxShadow = '0 0 20px rgba(0, 255, 255, 0.5)';
+  settingsPanel.style.zIndex = '1001';
+  settingsPanel.style.display = 'none'; // Initially hidden
+  settingsPanel.style.fontFamily = 'Arial, sans-serif';
+  settingsPanel.style.color = '#fff';
+  settingsPanel.style.border = '1px solid rgba(0, 255, 255, 0.5)';
+
+  // Add title
+  const title = document.createElement('div');
+  title.textContent = 'SETTINGS';
+  title.style.fontSize = '24px';
+  title.style.fontWeight = 'bold';
+  title.style.marginBottom = '20px';
+  title.style.textAlign = 'center';
+  title.style.color = '#00ffff';
+  title.style.borderBottom = '1px solid rgba(0, 255, 255, 0.5)';
+  title.style.paddingBottom = '10px';
+  settingsPanel.appendChild(title);
+
+  // Add X-Wing color selection section
+  const colorSection = document.createElement('div');
+  colorSection.style.marginBottom = '20px';
+
+  const colorLabel = document.createElement('div');
+  colorLabel.textContent = 'X-WING COLOR';
+  colorLabel.style.marginBottom = '10px';
+  colorLabel.style.fontWeight = 'bold';
+  colorSection.appendChild(colorLabel);
+
+  // Add color options
+  const colorOptions = document.createElement('div');
+  colorOptions.style.display = 'flex';
+  colorOptions.style.justifyContent = 'space-between';
+  colorOptions.style.marginBottom = '20px';
+
+  // Create color buttons
+  const colors = ['red', 'blue', 'green', 'yellow'];
+
+  colors.forEach((color) => {
+    const colorButton = document.createElement('div');
+    colorButton.style.width = '50px';
+    colorButton.style.height = '50px';
+    colorButton.style.backgroundColor = color;
+    colorButton.style.borderRadius = '50%';
+    colorButton.style.cursor = 'pointer';
+    colorButton.style.border =
+      color === gameSettings.xwingColor
+        ? '3px solid white'
+        : '3px solid transparent';
+    colorButton.style.boxSizing = 'border-box';
+    colorButton.dataset.color = color;
+
+    // Add click event
+    colorButton.addEventListener('click', () => {
+      changeXWingColor(color);
+      // Close settings panel
+      settingsPanel.style.display = 'none';
+    });
+
+    colorOptions.appendChild(colorButton);
+  });
+
+  colorSection.appendChild(colorOptions);
+  settingsPanel.appendChild(colorSection);
+
+  // Add close button
+  const closeButton = document.createElement('button');
+  closeButton.textContent = 'CLOSE';
+  closeButton.style.width = '100%';
+  closeButton.style.padding = '10px';
+  closeButton.style.backgroundColor = '#00ffff';
+  closeButton.style.color = '#000';
+  closeButton.style.border = 'none';
+  closeButton.style.borderRadius = '5px';
+  closeButton.style.cursor = 'pointer';
+  closeButton.style.fontWeight = 'bold';
+  closeButton.style.marginTop = '10px';
+
+  // Add hover effect
+  closeButton.addEventListener('mouseover', () => {
+    closeButton.style.backgroundColor = '#ffffff';
+  });
+  closeButton.addEventListener('mouseout', () => {
+    closeButton.style.backgroundColor = '#00ffff';
+  });
+
+  // Add click event
+  closeButton.addEventListener('click', () => {
+    settingsPanel.style.display = 'none';
+  });
+
+  settingsPanel.appendChild(closeButton);
+
+  // Add to body
+  document.body.appendChild(settingsPanel);
+
+  // Store reference
+  uiElements.settingsPanel = settingsPanel;
+
+  return settingsPanel;
+}
+
+// Update the color selection UI to reflect the current color
+function updateColorSelectionUI() {
+  if (!uiElements.settingsPanel) return;
+
+  // Find all color buttons
+  const colorButtons =
+    uiElements.settingsPanel.querySelectorAll('[data-color]');
+  colorButtons.forEach((button) => {
+    if (button.dataset.color === gameSettings.xwingColor) {
+      button.style.border = '3px solid white';
+    } else {
+      button.style.border = '3px solid transparent';
+    }
+  });
 }
 
 // Initialize and start animation
