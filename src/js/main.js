@@ -1,16 +1,16 @@
 import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import {
+  AudioManager,
+  CameraManager,
+  EnvironmentManager,
+} from '../manager/index.js';
 
 // Main scene variables
 let scene, camera, renderer;
-let orbitControls; // Development controls
-let starfield;
+let cameraManager; // New camera manager instance
+let environmentManager; // New environment manager instance
 let xwing; // Reference to our X-Wing
-let deathStar; // Reference to the Death Star
-let planets = []; // Array to hold planet objects
-let asteroids = []; // Array to hold asteroid objects
 let clock; // For frame-independent movement
-let collisionObjects = []; // Objects that can be collided with
 let lasers = []; // Array to hold laser projectiles
 let explosions = []; // Array to hold explosion effects
 let targets = []; // Targets that can be shot (TIE fighters, etc.)
@@ -29,78 +29,6 @@ const gameSettings = {
     yellow: { wing: 0xccaa00, laser: 0xffcc00 },
   },
 };
-
-// Create a dedicated AudioManager class
-class AudioManager {
-  constructor(listener) {
-    this.listener = listener;
-    this.loader = new THREE.AudioLoader();
-    this.music = null;
-    this.isMusicMuted = false;
-    console.log('AudioManager initialized - music only');
-  }
-
-  // Load only background music
-  loadSounds() {
-    console.log('Loading only background music');
-    this.loadMusic();
-  }
-
-  // Load background music
-  loadMusic() {
-    console.log('Loading background music');
-    this.loader.load(
-      'https://cdn.jsdelivr.net/gh/mrdoob/three.js@master/examples/sounds/358232_j_s_song.mp3',
-      (buffer) => {
-        this.music = new THREE.Audio(this.listener);
-        this.music.setBuffer(buffer);
-        this.music.setVolume(0.3);
-        this.music.setLoop(true);
-
-        // Auto-play music if not muted
-        if (!this.isMusicMuted) {
-          this.playMusic();
-        }
-        console.log('Background music loaded');
-      },
-      // Progress callback
-      (xhr) => {
-        console.log(`Music ${(xhr.loaded / xhr.total) * 100}% loaded`);
-      },
-      // Error callback
-      (err) => {
-        console.error('Error loading background music:', err);
-      }
-    );
-  }
-
-  // Play music if not already playing
-  playMusic() {
-    if (this.music && !this.music.isPlaying) {
-      this.music.play();
-      console.log('Music started playing');
-    }
-  }
-
-  // Toggle music on/off
-  toggleMusic() {
-    if (this.music) {
-      if (this.isMusicMuted) {
-        this.music.play();
-        this.isMusicMuted = false;
-        console.log('Music unmuted');
-      } else {
-        this.music.pause();
-        this.isMusicMuted = true;
-        console.log('Music muted');
-      }
-      return this.isMusicMuted;
-    } else {
-      console.warn('Music not loaded yet');
-      return this.isMusicMuted;
-    }
-  }
-}
 
 // Create a singleton instance
 let audioManager = null;
@@ -189,24 +117,6 @@ function init() {
   // Create clock for frame-independent movement
   clock = new THREE.Clock();
 
-  // Create camera
-  camera = new THREE.PerspectiveCamera(
-    75,
-    window.innerWidth / window.innerHeight,
-    0.1,
-    2000
-  );
-  camera.position.z = 10;
-  camera.position.y = 0;
-
-  // Add audio listener to camera
-  const audioListener = new THREE.AudioListener();
-  camera.add(audioListener);
-
-  // Initialize audio manager
-  audioManager = new AudioManager(audioListener);
-  audioManager.loadSounds();
-
   // Create renderer
   renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
@@ -215,11 +125,27 @@ function init() {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   document.body.appendChild(renderer.domElement);
 
-  // Add orbit controls for development (can be toggled off later)
-  orbitControls = new OrbitControls(camera, renderer.domElement);
-  orbitControls.enableDamping = true;
-  orbitControls.dampingFactor = 0.05;
-  orbitControls.enabled = false; // Disable by default, use 'o' key to toggle
+  // Initialize camera manager
+  cameraManager = new CameraManager(scene, renderer);
+  const { camera: newCamera, audioListener } = cameraManager.init();
+  camera = newCamera;
+
+  // Initialize environment manager
+  environmentManager = new EnvironmentManager(scene);
+  environmentManager.createStarfield();
+
+  // Create the environment
+  environmentManager.createPlanet(-500, 100, -1000, 100, 'earth', 0x3498db); // Blue planet
+  environmentManager.createPlanet(800, -50, -1200, 150, 'gas-giant', 0xe74c3c); // Red gas giant
+  environmentManager.createPlanet(200, 300, -800, 80, 'rocky', 0xf39c12); // Rocky orange planet
+  environmentManager.createAsteroidField(0, 0, -500, 300, 50);
+
+  // Create Death Star
+  environmentManager.createDeathStar();
+
+  // Initialize audio manager
+  audioManager = new AudioManager(audioListener);
+  audioManager.loadSounds();
 
   // Add ambient light
   const ambientLight = new THREE.AmbientLight(0x404040);
@@ -235,20 +161,11 @@ function init() {
   directionalLight.shadow.camera.far = 500;
   scene.add(directionalLight);
 
-  // Create starfield background
-  createStarfield();
-
-  // Create the environment
-  createEnvironment();
-
-  // Create Death Star
-  createDeathStar();
-
   // Add X-Wing model
   createSimpleXWing();
 
   // Add enemy TIE fighters
-  createEnemyFighters();
+  environmentManager.createEnemyFighters();
 
   // Setup event listeners
   setupEventListeners();
@@ -258,211 +175,6 @@ function init() {
 
   // Initialize UI
   initUI();
-}
-
-// Create a simple starfield background
-function createStarfield() {
-  const starsGeometry = new THREE.BufferGeometry();
-  const starsMaterial = new THREE.PointsMaterial({
-    color: 0xffffff,
-    size: 0.1,
-  });
-
-  const starsVertices = [];
-  for (let i = 0; i < 20000; i++) {
-    const x = (Math.random() - 0.5) * 4000;
-    const y = (Math.random() - 0.5) * 4000;
-    const z = (Math.random() - 0.5) * 4000;
-    starsVertices.push(x, y, z);
-  }
-
-  starsGeometry.setAttribute(
-    'position',
-    new THREE.Float32BufferAttribute(starsVertices, 3)
-  );
-  starfield = new THREE.Points(starsGeometry, starsMaterial);
-  scene.add(starfield);
-}
-
-// Create space environment with planets, asteroids
-function createEnvironment() {
-  // Add some planets
-  createPlanet(-500, 100, -1000, 100, 'earth', 0x3498db); // Blue planet
-  createPlanet(800, -50, -1200, 150, 'gas-giant', 0xe74c3c); // Red gas giant
-  createPlanet(200, 300, -800, 80, 'rocky', 0xf39c12); // Rocky orange planet
-
-  // Add asteroid field between player and Death Star
-  createAsteroidField(0, 0, -500, 300, 50);
-}
-
-// Create a simple planet
-function createPlanet(x, y, z, radius, type, color) {
-  const planetGeometry = new THREE.SphereGeometry(radius, 64, 64);
-
-  let planetMaterial;
-
-  switch (type) {
-    case 'gas-giant':
-      // Create gas giant with cloud-like texture
-      planetMaterial = new THREE.MeshPhongMaterial({
-        color: color,
-        emissive: 0x222222,
-        flatShading: false,
-        shininess: 0,
-      });
-      break;
-    case 'rocky':
-      // Create rocky planet with bumpy surface
-      planetMaterial = new THREE.MeshStandardMaterial({
-        color: color,
-        roughness: 0.9,
-        metalness: 0.1,
-        flatShading: true,
-      });
-      break;
-    case 'earth':
-    default:
-      // Create earth-like planet
-      planetMaterial = new THREE.MeshPhongMaterial({
-        color: color,
-        specular: 0x333333,
-        shininess: 5,
-      });
-  }
-
-  const planet = new THREE.Mesh(planetGeometry, planetMaterial);
-  planet.position.set(x, y, z);
-  planet.castShadow = true;
-  planet.receiveShadow = true;
-
-  // Add rings to gas giants
-  if (type === 'gas-giant') {
-    const ringGeometry = new THREE.RingGeometry(radius + 20, radius + 60, 64);
-    const ringMaterial = new THREE.MeshBasicMaterial({
-      color: 0xffd700,
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.5,
-    });
-    const ring = new THREE.Mesh(ringGeometry, ringMaterial);
-    ring.rotation.x = Math.PI / 2;
-    planet.add(ring);
-  }
-
-  scene.add(planet);
-  planets.push({
-    mesh: planet,
-    radius: radius,
-    rotationSpeed: Math.random() * 0.005,
-  });
-
-  // Add to collision objects
-  collisionObjects.push({
-    mesh: planet,
-    position: planet.position,
-    radius: radius,
-    type: 'planet',
-  });
-}
-
-// Create an asteroid field
-function createAsteroidField(centerX, centerY, centerZ, radius, count) {
-  const asteroidGeometry = new THREE.DodecahedronGeometry(1, 0);
-  const asteroidMaterial = new THREE.MeshStandardMaterial({
-    color: 0x888888,
-    roughness: 0.9,
-    metalness: 0.1,
-  });
-
-  for (let i = 0; i < count; i++) {
-    // Random position within the field radius
-    const angle = Math.random() * Math.PI * 2;
-    const distance = Math.random() * radius;
-    const x = centerX + Math.cos(angle) * distance;
-    const y = centerY + (Math.random() - 0.5) * radius;
-    const z = centerZ + Math.sin(angle) * distance;
-
-    // Random size
-    const scale = 2 + Math.random() * 8;
-
-    // Create asteroid mesh
-    const asteroid = new THREE.Mesh(asteroidGeometry, asteroidMaterial);
-    asteroid.position.set(x, y, z);
-    asteroid.scale.set(scale, scale, scale);
-
-    // Add random rotation
-    asteroid.rotation.set(
-      Math.random() * Math.PI * 2,
-      Math.random() * Math.PI * 2,
-      Math.random() * Math.PI * 2
-    );
-
-    scene.add(asteroid);
-
-    // Add to asteroids array
-    asteroids.push({
-      mesh: asteroid,
-      radius: scale,
-      rotationSpeed: {
-        x: Math.random() * 0.02 - 0.01,
-        y: Math.random() * 0.02 - 0.01,
-        z: Math.random() * 0.02 - 0.01,
-      },
-      velocity: {
-        x: Math.random() * 0.1 - 0.05,
-        y: Math.random() * 0.1 - 0.05,
-        z: Math.random() * 0.1 - 0.05,
-      },
-    });
-
-    // Add to collision objects
-    collisionObjects.push({
-      mesh: asteroid,
-      position: asteroid.position,
-      radius: scale,
-      type: 'asteroid',
-    });
-  }
-}
-
-// Create the Death Star
-function createDeathStar() {
-  // Create the main sphere
-  const deathStarGeometry = new THREE.SphereGeometry(300, 64, 64);
-  const deathStarMaterial = new THREE.MeshPhongMaterial({
-    color: 0xcccccc,
-    shininess: 10,
-    flatShading: false,
-  });
-
-  deathStar = new THREE.Mesh(deathStarGeometry, deathStarMaterial);
-  deathStar.position.set(0, 0, -2000); // Far in the distance
-
-  // Create the superlaser indent
-  const superlaser = new THREE.Mesh(
-    new THREE.CircleGeometry(60, 32),
-    new THREE.MeshBasicMaterial({ color: 0x333333 })
-  );
-  superlaser.position.z = 299; // Just outside the sphere
-  deathStar.add(superlaser);
-
-  // Create the equatorial trench
-  const trenchGeometry = new THREE.TorusGeometry(300, 10, 16, 100);
-  const trenchMaterial = new THREE.MeshPhongMaterial({ color: 0x333333 });
-  const trench = new THREE.Mesh(trenchGeometry, trenchMaterial);
-  trench.rotation.x = Math.PI / 2;
-  deathStar.add(trench);
-
-  // Add Death Star to scene
-  scene.add(deathStar);
-
-  // Add to collision objects
-  collisionObjects.push({
-    mesh: deathStar,
-    position: deathStar.position,
-    radius: 300,
-    type: 'deathstar',
-  });
 }
 
 // Create a simple X-Wing model
@@ -545,78 +257,6 @@ function createSimpleXWing() {
   xwing.position.copy(shipState.position);
 }
 
-// Create enemy TIE fighters
-function createEnemyFighters() {
-  // Create 10 TIE fighters
-  for (let i = 0; i < 10; i++) {
-    createTieFighter(
-      Math.random() * 400 - 200, // x
-      Math.random() * 200 - 100, // y
-      Math.random() * -800 - 200 // z
-    );
-  }
-}
-
-// Create a single TIE fighter
-function createTieFighter(x, y, z) {
-  // Create a simple TIE fighter using basic geometry
-  const group = new THREE.Group();
-
-  // Center pod (spherical)
-  const podGeometry = new THREE.SphereGeometry(3, 16, 16);
-  const podMaterial = new THREE.MeshPhongMaterial({ color: 0x333333 });
-  const pod = new THREE.Mesh(podGeometry, podMaterial);
-  group.add(pod);
-
-  // Wings (hexagonal)
-  const wingGeometry = new THREE.CylinderGeometry(8, 8, 1, 6);
-  const wingMaterial = new THREE.MeshPhongMaterial({ color: 0x666666 });
-
-  const leftWing = new THREE.Mesh(wingGeometry, wingMaterial);
-  leftWing.rotation.z = Math.PI / 2;
-  leftWing.position.set(-5, 0, 0);
-  group.add(leftWing);
-
-  const rightWing = new THREE.Mesh(wingGeometry, wingMaterial);
-  rightWing.rotation.z = Math.PI / 2;
-  rightWing.position.set(5, 0, 0);
-  group.add(rightWing);
-
-  // Add red glow for engines
-  const engineGlowGeometry = new THREE.SphereGeometry(0.5, 8, 8);
-  const engineGlowMaterial = new THREE.MeshBasicMaterial({
-    color: 0xff0000,
-    transparent: true,
-    opacity: 0.8,
-  });
-
-  const engine1 = new THREE.Mesh(engineGlowGeometry, engineGlowMaterial);
-  engine1.position.set(0, 0, 2);
-  group.add(engine1);
-
-  // Position in scene
-  group.position.set(x, y, z);
-  scene.add(group);
-
-  // Add to targets array with properties
-  targets.push({
-    mesh: group,
-    position: group.position,
-    radius: 8, // Collision radius
-    health: 50,
-    velocity: new THREE.Vector3(
-      Math.random() * 0.2 - 0.1,
-      Math.random() * 0.1 - 0.05,
-      Math.random() * 0.2 - 0.1
-    ),
-    rotation: new THREE.Vector3(
-      Math.random() * 0.01,
-      Math.random() * 0.01,
-      Math.random() * 0.01
-    ),
-  });
-}
-
 // Setup event listeners for keyboard and mouse
 function setupEventListeners() {
   // Keyboard events
@@ -627,7 +267,7 @@ function setupEventListeners() {
 
     // Toggle orbital controls for development with 'o' key
     if (e.key === 'o') {
-      orbitControls.enabled = !orbitControls.enabled;
+      cameraManager.toggleOrbitControls();
     }
 
     // Trigger barrel roll with Q or E if not already active
@@ -722,7 +362,7 @@ function fireLaser() {
   // No sound for lasers
 }
 
-// Update the updateLasers function to remove explosion sound
+// Update the updateLasers function to use environmentManager for target destruction
 function updateLasers(deltaTime) {
   // Update each laser
   for (let i = lasers.length - 1; i >= 0; i--) {
@@ -745,8 +385,8 @@ function updateLasers(deltaTime) {
     }
 
     // Check for collision with targets
-    for (let j = targets.length - 1; j >= 0; j--) {
-      const target = targets[j];
+    for (let j = environmentManager.getTargets().length - 1; j >= 0; j--) {
+      const target = environmentManager.getTargets()[j];
 
       // Calculate distance
       const distance = laser.mesh.position.distanceTo(target.position);
@@ -757,7 +397,11 @@ function updateLasers(deltaTime) {
         target.health -= laser.damage;
 
         // Create explosion effect
-        createExplosionEffect(laser.mesh.position, 0.5, 0xff0000);
+        environmentManager.createExplosionEffect(
+          laser.mesh.position,
+          0.5,
+          0xff0000
+        );
 
         // Remove laser
         scene.remove(laser.mesh);
@@ -766,19 +410,20 @@ function updateLasers(deltaTime) {
         // Check if target destroyed
         if (target.health <= 0) {
           // Create larger explosion
-          createExplosionEffect(target.position, 2, 0xffaa00);
+          environmentManager.createExplosionEffect(
+            target.position,
+            2,
+            0xffaa00
+          );
 
           // Remove target
-          scene.remove(target.mesh);
-          targets.splice(j, 1);
+          environmentManager.destroyTarget(j);
 
           // Increase score
           gameState.score += 100;
 
           // Update the UI score display
           updateScoreDisplay();
-
-          // No explosion sound
         }
 
         break; // Laser can only hit one target
@@ -786,8 +431,8 @@ function updateLasers(deltaTime) {
     }
 
     // Check for collision with asteroids
-    for (let j = 0; j < asteroids.length; j++) {
-      const asteroid = asteroids[j];
+    for (let j = 0; j < environmentManager.asteroids.length; j++) {
+      const asteroid = environmentManager.asteroids[j];
 
       // Calculate distance
       const distance = laser.mesh.position.distanceTo(asteroid.mesh.position);
@@ -795,7 +440,11 @@ function updateLasers(deltaTime) {
       // Check if hit
       if (distance < asteroid.radius) {
         // Create explosion effect
-        createExplosionEffect(laser.mesh.position, 0.5, 0xaaaaaa);
+        environmentManager.createExplosionEffect(
+          laser.mesh.position,
+          0.5,
+          0xaaaaaa
+        );
 
         // Remove laser
         scene.remove(laser.mesh);
@@ -803,23 +452,12 @@ function updateLasers(deltaTime) {
 
         // Small chance to destroy asteroid
         if (Math.random() < 0.25) {
-          createExplosionEffect(
+          environmentManager.createExplosionEffect(
             asteroid.mesh.position,
             asteroid.radius,
             0xaaaaaa
           );
-          scene.remove(asteroid.mesh);
-
-          // Find and remove from collision objects
-          const asteroidIndex = collisionObjects.findIndex(
-            (obj) => obj.mesh === asteroid.mesh
-          );
-          if (asteroidIndex !== -1) {
-            collisionObjects.splice(asteroidIndex, 1);
-          }
-
-          // Remove from asteroids array
-          asteroids.splice(j, 1);
+          environmentManager.destroyAsteroid(j);
 
           // Add points for destroying asteroid
           gameState.score += 25;
@@ -1254,96 +892,20 @@ function animate() {
   // Update physics and movement
   if (xwing) {
     updateShipPhysics(deltaTime);
-    updateCamera();
+    cameraManager.update(xwing, shipState);
   }
 
   // Update environment
-  updateEnvironment(deltaTime);
+  environmentManager.updateEnvironment(deltaTime);
+  environmentManager.updateStarfield();
+  environmentManager.updateEnemies(deltaTime, shipState);
 
   // Update combat elements
   updateLasers(deltaTime);
   updateExplosions(deltaTime);
-  updateEnemies(deltaTime);
-
-  // Update orbit controls if enabled
-  if (orbitControls.enabled) {
-    orbitControls.update();
-  }
-
-  // Slowly rotate the starfield for a dynamic effect
-  if (starfield) {
-    starfield.rotation.x += 0.0001;
-    starfield.rotation.y += 0.0001;
-  }
 
   // Render the scene
   renderer.render(scene, camera);
-}
-
-// Update camera to follow the ship
-function updateCamera() {
-  if (!orbitControls.enabled) {
-    // Position camera behind and slightly above the ship
-    const cameraOffset = new THREE.Vector3(0, 3, 15);
-    const cameraPosition = new THREE.Vector3();
-
-    // Transform offset to ship's local space
-    cameraOffset.applyQuaternion(xwing.quaternion);
-    cameraPosition.copy(shipState.position).add(cameraOffset);
-
-    // Smoothly move camera to new position
-    camera.position.lerp(cameraPosition, 0.05);
-
-    // Look at ship with slight offset for better view
-    const lookAtPosition = shipState.position
-      .clone()
-      .add(new THREE.Vector3(0, 1, 0));
-    camera.lookAt(lookAtPosition);
-  }
-}
-
-// Update the environment elements (planets, asteroids)
-function updateEnvironment(deltaTime) {
-  // Rotate planets
-  planets.forEach((planet) => {
-    planet.mesh.rotation.y += planet.rotationSpeed;
-  });
-
-  // Move and rotate asteroids
-  asteroids.forEach((asteroid, index) => {
-    // Apply rotation
-    asteroid.mesh.rotation.x += asteroid.rotationSpeed.x;
-    asteroid.mesh.rotation.y += asteroid.rotationSpeed.y;
-    asteroid.mesh.rotation.z += asteroid.rotationSpeed.z;
-
-    // Apply movement
-    asteroid.mesh.position.x += asteroid.velocity.x;
-    asteroid.mesh.position.y += asteroid.velocity.y;
-    asteroid.mesh.position.z += asteroid.velocity.z;
-
-    // Update collision object position
-    collisionObjects[planets.length + index].position = asteroid.mesh.position;
-
-    // Reset asteroids that drift too far
-    const distanceFromCenter = asteroid.mesh.position.distanceTo(
-      new THREE.Vector3(0, 0, -500)
-    );
-    if (distanceFromCenter > 500) {
-      // Reset position
-      const angle = Math.random() * Math.PI * 2;
-      const distance = Math.random() * 300;
-      asteroid.mesh.position.set(
-        Math.cos(angle) * distance,
-        (Math.random() - 0.5) * 300,
-        -500 + Math.sin(angle) * distance
-      );
-    }
-  });
-
-  // Slowly rotate the Death Star
-  if (deathStar) {
-    deathStar.rotation.y += 0.0002;
-  }
 }
 
 // Check for collisions between ship and objects
@@ -1355,7 +917,7 @@ function checkCollisions() {
   const shipPosition = shipState.position;
 
   // Check against all collision objects
-  for (const obj of collisionObjects) {
+  for (const obj of environmentManager.getCollisionObjects()) {
     // Calculate distance
     const distance = shipPosition.distanceTo(obj.position);
 
@@ -1424,9 +986,7 @@ function updateBarrelRoll(deltaTime) {
 
 // Handle window resize
 function onWindowResize() {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  cameraManager.onWindowResize();
 
   // Check if device type changed (e.g., when rotating a tablet)
   const wasMobile = isMobile;
